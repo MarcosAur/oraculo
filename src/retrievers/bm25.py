@@ -9,7 +9,7 @@ class BM25Retriever(BaseRetriever):
     Implements the BaseRetriever interface.
     """
     
-    def __init__(self, chunks: List[Dict[str, Any]], model_name: str = "gpt-4"):
+    def __init__(self, chunks: List[Dict[str, Any]], model_name: str = "gpt-4.1"):
         """
         Initializes the BM25Retriever with a list of pre-tokenized chunks.
         
@@ -54,7 +54,15 @@ class BM25Retriever(BaseRetriever):
             scored_chunks.append(chunk_copy)
             
         # Sort by score in descending order
-        scored_chunks.sort(key=lambda x: x["score"], reverse=True)
+        scored_chunks.sort(key=lambda x: x["score"], reverse=True)  
         
+        # Filter chunks to only keep those with a score > 1.0
+        filtered_chunks = [chunk for chunk in scored_chunks if chunk["score"] > 0.7]
+        
+        # If no chunks meet the threshold, return the fallback message
+        if not filtered_chunks:
+            return "Seja mais específico na pergunta"
+            
         # Return the top_k results
-        return scored_chunks[:top_k]
+        return filtered_chunks[:top_k]
+

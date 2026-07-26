@@ -1,7 +1,8 @@
-from chunker import ParagraphChunker
-from retrievers import BM25Retriever
+import sys
+sys.path.append("src")
+from pipelines import IngestionPipeline
 
-# Base raw text
+# Edict base text
 BASE_TEXT = """
 1.1 O Concurso Público regido por este Edital, pelos diplomas legais e regulamentares, seus anexos e posteriores retificações, caso existam, destina-se ao provimento de 212 (duzentos e doze) vagas, bem como à formação de cadastro de reserva, distribuídas na forma do subitem 3.1 deste Edital, observado o prazo de validade do certame.
 
@@ -17,38 +18,16 @@ BASE_TEXT = """
 """
 
 def main():
-    chunker = ParagraphChunker(model_name="gpt-4")
+    print("=" * 60)
+    print(" INICIANDO PIPELINE DE INGESTÃO DE DADOS ")
+    print("=" * 60)
     
-    # 1. Process paragraphs and create chunks with 20% overlap
-    paragraphs = chunker.split_paragraphs(BASE_TEXT)
-    chunks = chunker.create_chunks(paragraphs, overlap_percentage=0.20)
+    pipeline = IngestionPipeline()
+    pipeline.run(BASE_TEXT)
     
-    # 2. Get user query
-    default_question = "Qual o prazo de validade do concurso?"
-    try:
-        user_question = input("Digite sua pergunta: ").strip()
-        if not user_question:
-            user_question = default_question
-    except (EOFError, KeyboardInterrupt):
-        user_question = default_question
-        print(f"Pergunta: {default_question}")
-        
-    # 3. Initialize retriever (implements BaseRetriever)
-    retriever = BM25Retriever(chunks, model_name="gpt-4")
-    
-    # 4. Score documents via retrieve()
-    scored_chunks = retriever.retrieve(user_question, top_k=len(chunks))
-    
-    # 5. Display only the ranked results with scores and text
-    print("\n" + "=" * 80)
-    print(" RESULTADOS DA BUSCA (BM25OKAPI) ")
-    print("=" * 80)
-    for scored in scored_chunks:
-        print(f"Chunk {scored['chunk_index']} | Score BM25: {scored['score']:.4f}")
-        print("-" * 80)
-        print(scored['text'].strip())
-        print("=" * 80)
+    print("=" * 60)
+    print(" PIPELINE DE INGESTÃO CONCLUÍDO ")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()
-
