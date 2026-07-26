@@ -1,5 +1,5 @@
 from chunker import ParagraphChunker
-from retriever import BM25OkapiRetriever
+from retrievers import BM25Retriever
 
 # Base raw text
 BASE_TEXT = """
@@ -33,23 +33,22 @@ def main():
         user_question = default_question
         print(f"Pergunta: {default_question}")
         
-    # 3. Tokenize question
-    question_tokens = chunker.encoding.encode(user_question)
+    # 3. Initialize retriever (implements BaseRetriever)
+    retriever = BM25Retriever(chunks, model_name="gpt-4")
     
-    # 4. Score documents via BM25Okapi
-    corpus_tokens = [chunk["tokens"] for chunk in chunks]
-    retriever = BM25OkapiRetriever(corpus_tokens)
-    scored_chunks = retriever.retrieve(question_tokens, chunks)
+    # 4. Score documents via retrieve()
+    scored_chunks = retriever.retrieve(user_question, top_k=len(chunks))
     
     # 5. Display only the ranked results with scores and text
     print("\n" + "=" * 80)
     print(" RESULTADOS DA BUSCA (BM25OKAPI) ")
     print("=" * 80)
     for scored in scored_chunks:
-        print(f"Chunk {scored['chunk_index']} | Score BM25: {scored['bm25_score']:.4f}")
+        print(f"Chunk {scored['chunk_index']} | Score BM25: {scored['score']:.4f}")
         print("-" * 80)
         print(scored['text'].strip())
         print("=" * 80)
 
 if __name__ == "__main__":
     main()
+

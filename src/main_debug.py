@@ -1,5 +1,5 @@
 from chunker import ParagraphChunker
-from retriever import BM25OkapiRetriever
+from retrievers import BM25Retriever
 
 # Base raw text
 BASE_TEXT = """
@@ -65,24 +65,24 @@ def main():
         
     print(f"\nPergunta processada: \"\033[36m{user_question}\033[0m\"")
     
-    # 4. Tokenize the question using the same encoder
+    # 4. Tokenize the question using the same encoder (only for debugging info)
     question_tokens = chunker.encoding.encode(user_question)
     print(f"Tokens da pergunta ({len(question_tokens)} tokens): {question_tokens}\n")
     
-    # 5. Initialize BM25OkapiRetriever
-    corpus_tokens = [chunk["tokens"] for chunk in chunks]
-    retriever = BM25OkapiRetriever(corpus_tokens)
+    # 5. Initialize BM25Retriever (implements BaseRetriever)
+    retriever = BM25Retriever(chunks, model_name="gpt-4")
     
     # 6. Retrieve and score chunks
-    scored_chunks = retriever.retrieve(question_tokens, chunks)
+    scored_chunks = retriever.retrieve(user_question, top_k=len(chunks))
     
     # 7. Show similarity results
     print("Resultados de Similaridade BM25Okapi (ordenados por score descendente):")
     print("-" * 70)
     for scored in scored_chunks:
-        print(f"Chunk {scored['chunk_index']} | Score BM25: \033[35m{scored['bm25_score']:.4f}\033[0m")
+        print(f"Chunk {scored['chunk_index']} | Score BM25: \033[35m{scored['score']:.4f}\033[0m")
         print(f"Texto do Chunk:\n{scored['text'].strip()}")
         print("-" * 70)
 
 if __name__ == "__main__":
     main()
+
