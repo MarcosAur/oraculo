@@ -3,6 +3,8 @@
 O Oráculo extrai PDFs com PaddleOCR, normaliza o texto, cria chunks limitados por
 tokens e permite consultá-los com recuperação lexical BM25 e uma LLM opcional.
 
+A documentação completa está em [docs/README.md](docs/README.md).
+
 ## Estrutura principal
 
 ```text
