@@ -1,0 +1,25 @@
+source:
+  input_dir: ./pdfs
+  recursive: true
+
+output:
+  root_dir: ./data/bases
+  base_name: documentos
+
+paddle_ocr:
+  language: pt
+  device: cpu
+  minimum_confidence: 0.5
+  use_doc_orientation_classify: false
+  use_doc_unwarping: false
+  use_textline_orientation: false
+
+chunking:
+  tokenizer_model: gpt-4.1
+  chunk_size: 800
+  chunk_overlap: 120
+  minimum_chunk_size: 80
+
+runtime:
+  force: false
+  continue_on_error: true

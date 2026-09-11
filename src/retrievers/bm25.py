@@ -1,68 +1,85 @@
-from typing import List, Dict, Any
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from rank_bm25 import BM25Plus
+
 from .base import BaseRetriever
-from rank_bm25 import BM25Okapi
-import tiktoken
+
+
+DEFAULT_CHUNKS_PATH = Path("data/bases/documentos/chunks.jsonl")
+_WORD_PATTERN = re.compile(r"\w+", flags=re.UNICODE)
+
 
 class BM25Retriever(BaseRetriever):
-    """
-    A concrete retriever that uses the BM25Okapi algorithm over tokenized text.
-    Implements the BaseRetriever interface.
-    """
-    
-    def __init__(self, chunks: List[Dict[str, Any]], model_name: str = "gpt-4.1"):
-        """
-        Initializes the BM25Retriever with a list of pre-tokenized chunks.
-        
-        Args:
-            chunks: A list of dictionaries representing chunks. Each chunk must contain a "tokens" key.
-            model_name: The model name to load the correct tiktoken encoding.
-        """
+    """Lexical retriever over chunks produced by the PDF ingestion pipeline."""
+
+    def __init__(self, chunks: list[dict[str, Any]]):
         self.chunks = chunks
-        try:
-            self.encoding = tiktoken.encoding_for_model(model_name)
-        except KeyError:
-            self.encoding = tiktoken.get_encoding("cl100k_base")
-            
-        # Extract the corpus tokens (list of lists of token IDs)
-        corpus_tokens = [chunk["tokens"] for chunk in chunks]
-        self.bm25 = BM25Okapi(corpus_tokens)
+        self.corpus_tokens = [self._tokenize(chunk["text"]) for chunk in chunks]
+        self.corpus_token_sets = [set(tokens) for tokens in self.corpus_tokens]
+        self.bm25 = BM25Plus(self.corpus_tokens) if self.corpus_tokens else None
 
-    def retrieve(self, query: str, top_k: int = 3, **kwargs) -> List[Dict[str, Any]]:
-        """
-        Retrieves the top_k most similar chunks for the given raw text query.
-        
-        Args:
-            query: The raw string query from the user.
-            top_k: The number of relevant documents to return.
-            
-        Returns:
-            A list of the top_k scoring chunks, containing a "score" key.
-        """
-        if not self.chunks:
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return _WORD_PATTERN.findall(text.casefold())
+
+    @classmethod
+    def from_jsonl(cls, chunks_path: str | Path = DEFAULT_CHUNKS_PATH) -> "BM25Retriever":
+        path = Path(chunks_path)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Knowledge base chunks not found at {path}. "
+                "Run the PDF ingestion pipeline first."
+            )
+
+        chunks: list[dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"Invalid JSONL in {path} at line {line_number}: {exc}"
+                    ) from exc
+                if not isinstance(chunk, dict) or not isinstance(chunk.get("text"), str):
+                    raise ValueError(
+                        f"Invalid chunk in {path} at line {line_number}: "
+                        "a text field is required."
+                    )
+                chunks.append(chunk)
+        return cls(chunks)
+
+    def retrieve(
+        self, query: str, top_k: int = 3, **kwargs: Any
+    ) -> list[dict[str, Any]]:
+        if self.bm25 is None or top_k <= 0:
             return []
-            
-        # Tokenize the query using the same encoding
-        query_tokens = self.encoding.encode(query)
-        
-        # Calculate BM25 scores for each chunk
-        scores = self.bm25.get_scores(query_tokens)
-        
-        scored_chunks = []
-        for i, chunk in enumerate(self.chunks):
-            chunk_copy = chunk.copy()
-            chunk_copy["score"] = float(scores[i])
-            scored_chunks.append(chunk_copy)
-            
-        # Sort by score in descending order
-        scored_chunks.sort(key=lambda x: x["score"], reverse=True)  
-        
-        # Filter chunks to only keep those with a score > 1.0
-        filtered_chunks = [chunk for chunk in scored_chunks if chunk["score"] > 0.7]
-        
-        # If no chunks meet the threshold, return the fallback message
-        if not filtered_chunks:
-            return "Seja mais específico na pergunta"
-            
-        # Return the top_k results
-        return filtered_chunks[:top_k]
 
+        query_tokens = self._tokenize(query)
+        if not query_tokens:
+            return []
+
+        query_token_set = set(query_tokens)
+        matching_indexes = [
+            index
+            for index, token_set in enumerate(self.corpus_token_sets)
+            if token_set & query_token_set
+        ]
+        if not matching_indexes:
+            return []
+
+        scores = self.bm25.get_scores(query_tokens)
+        scored_chunks: list[dict[str, Any]] = []
+        for index in matching_indexes:
+            chunk = self.chunks[index].copy()
+            chunk["score"] = float(scores[index])
+            scored_chunks.append(chunk)
+
+        scored_chunks.sort(key=lambda item: item["score"], reverse=True)
+        return scored_chunks[:top_k]

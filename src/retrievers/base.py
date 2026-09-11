@@ -19,4 +19,4 @@ class BaseRetriever(ABC):
         Returns:
             A list of dictionary chunks sorted by relevance, each containing a 'score' key.
         """
-        pass
+        raise NotImplementedError

@@ -1,0 +1,23 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: oraculo-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Console Web
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-oraculo}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-oraculo123}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+    driver: local

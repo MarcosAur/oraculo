@@ -1,71 +1,76 @@
-import sys
+from __future__ import annotations
+
+import argparse
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-sys.path.append("src")
-from pipelines import QAPipeline
-from llm import GeminiProvider, OpenAIProvider, OpenRouterProvider
+from src.llm import GeminiProvider, OpenAIProvider, OpenRouterProvider
+from src.pipelines import QAPipeline
+from src.retrievers import DEFAULT_CHUNKS_PATH
 
-def main():
-    print("=" * 60)
-    print(" INICIANDO PIPELINE DE RESPOSTA AO CLIENTE ")
-    print("=" * 60)
-    
-    # Load environment variables
+
+PROVIDERS = {
+    "openrouter": (OpenRouterProvider, "openai/gpt-4.1-mini"),
+    "openai": (OpenAIProvider, "gpt-4.1-mini"),
+    "gemini": (GeminiProvider, "gemini-2.0-flash"),
+}
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Consulta os PDFs ingeridos usando BM25 e uma LLM."
+    )
+    parser.add_argument("question", nargs="?", help="Pergunta para o RAG.")
+    parser.add_argument(
+        "--chunks", type=Path, default=DEFAULT_CHUNKS_PATH
+    )
+    parser.add_argument(
+        "--provider",
+        choices=PROVIDERS,
+        default=os.getenv("LLM_PROVIDER", "openrouter"),
+    )
+    parser.add_argument("--model", default=os.getenv("LLM_MODEL"))
+    parser.add_argument("--top-k", type=int, default=3)
+    return parser
+
+
+def main() -> int:
     load_dotenv()
-    
-    # 1. Initialize the LLM provider manually
-    # Uncomment/configure the provider you wish to use:
-    # provider = GeminiProvider()
-    # model_name = "gemini-1.5-flash"
-    
-    # provider = OpenAIProvider()
-    # model_name = "gpt-4o"
-    
-    provider = OpenRouterProvider()
-    model_name = "openai/gpt-4.1-mini"
-    
-    # 2. Initialize QAPipeline
+    args = build_parser().parse_args()
+    if args.top_k < 1:
+        raise SystemExit("Erro: --top-k deve ser maior que zero.")
+
+    question = args.question or input("Pergunta: ").strip()
+    if not question:
+        raise SystemExit("Erro: informe uma pergunta.")
+
+    provider_class, default_model = PROVIDERS[args.provider]
+    model = args.model or default_model
     try:
-        pipeline = QAPipeline(llm_provider=provider)
-    except FileNotFoundError as e:
-        print(f"\033[31m{e}\033[0m")
-        sys.exit(1)
-        
-    # 3. Get user question
-    default_question = "Qual o prazo de validade do concurso?"
-    print(f"Digite sua pergunta ou aperte ENTER para usar a padrão:")
-    print(f"Padrão: \"{default_question}\"")
-    
-    try:
-        user_question = input("\nPergunta: ").strip()
-        if not user_question:
-            user_question = default_question
-    except (EOFError, KeyboardInterrupt):
-        user_question = default_question
-        print(f"\nUsando pergunta padrão (ambiente não interativo): \"{default_question}\"")
-        
-    print(f"\nBuscando resposta usando o modelo: {model_name}...")
-    
-    # 4. Generate answer
-    result = pipeline.answer(user_question, llm_model=model_name, top_k=3)
-    
-    # 5. Display output
-    print("\n" + "=" * 60)
-    print(" RESPOSTA DO ORÁCULO ")
-    print("=" * 60)
-    print(f"\033[32m{result['answer']}\033[0m")
-    print("=" * 60)
-    
-    print("\n[Fontes Consultadas]:")
-    for doc in result["sources"]:
-        print(f" - Chunk {doc['chunk_index']} (score: {doc['score']:.4f}):")
-        text_preview = doc['text'].strip().replace('\n', ' ')
-        if len(text_preview) > 120:
-            text_preview = text_preview[:120] + "..."
-        print(f"   \"{text_preview}\"")
-    print("=" * 60)
+        pipeline = QAPipeline(
+            llm_provider=provider_class(), chunks_path=args.chunks
+        )
+        result = pipeline.answer(question, llm_model=model, top_k=args.top_k)
+    except (FileNotFoundError, RuntimeError, TypeError, ValueError) as exc:
+        raise SystemExit(f"Erro: {exc}") from exc
+
+    answer = result["answer"]
+    print(f"\nResposta:\n{answer}")
+    if result["sources"]:
+        print("\nFontes recuperadas pelo BM25:")
+        for chunk in result["sources"]:
+            source_path = chunk.get("source_path", "desconhecida")
+            score = chunk["score"]
+            page_start = chunk.get("page_start", "?")
+            page_end = chunk.get("page_end", "?")
+            print(
+                f"- {source_path} (score {score:.4f}, "
+                f"páginas {page_start}-{page_end})"
+            )
+    return 0
+
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

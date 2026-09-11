@@ -1,117 +1,86 @@
-# Oráculo — Sistema RAG para Consultas de Editais
+# Oráculo — RAG para PDFs
 
-O **Oráculo** é um sistema de **RAG (Retrieval-Augmented Generation)** projetado para responder a perguntas de forma precisa e direta sobre documentos textuais estruturados (como editais de concursos públicos). 
+O Oráculo extrai PDFs com PaddleOCR, normaliza o texto, cria chunks limitados por
+tokens e permite consultá-los com recuperação lexical BM25 e uma LLM opcional.
 
-Ele adota uma abordagem local para a busca de documentos com o algoritmo **BM25**, gerando chunks inteligentes baseados em parágrafos com overlap de tokens via `tiktoken`. A síntese de respostas é terceirizada para provedores de LLM configuráveis (Google Gemini, OpenAI ou OpenRouter) através de uma interface abstrata.
-
----
-
-## 🏗️ Estrutura do Projeto
-
-Abaixo está o mapeamento dos principais diretórios e arquivos que compõem o Oráculo:
+## Estrutura principal
 
 ```text
-Oraculo/
-├── data/
-│   └── chunks_cache.json       # Cache gerado pelo pipeline de ingestão contendo os chunks processados
-├── src/
-│   ├── llm/                    # Camada de abstração e provedores de LLMs
-│   │   ├── __init__.py
-│   │   ├── base.py             # Classe abstrata base LLMProvider
-│   │   ├── gemini_prov.py      # Integração com modelos Google Gemini
-│   │   ├── openai_prov.py      # Integração com modelos OpenAI
-│   │   └── openrouter_prov.py  # Integração com a API do OpenRouter
-│   ├── pipelines/              # Pipelines que orquestram os fluxos do sistema
-│   │   ├── __init__.py
-│   │   ├── ingestion.py        # IngestionPipeline: processamento inicial do texto base
-│   │   └── qa.py               # QAPipeline: fluxo completo de pergunta, busca e resposta RAG
-│   ├── retrievers/             # Algoritmos de busca e recuperação de contexto
-│   │   ├── __init__.py
-│   │   ├── base.py             # Interface abstrata BaseRetriever
-│   │   └── bm25.py             # BM25Retriever usando tokenização tiktoken e biblioteca rank-bm25
-│   └── chunker.py              # ParagraphChunker para segmentação inteligente de textos
-├── .env.exemplo                # Modelo de variáveis de ambiente do projeto
-├── .gitignore
-├── requirements.txt            # Dependências Python necessárias
-├── run_ingestion.py            # Script executável para processar o texto base
-└── run_qa.py                   # Script interativo de Perguntas & Respostas
+pdfs/                              # PDFs de entrada
+configs/ingestion.yml              # Configuração da ingestão
+data/bases/documentos/
+├── manifest.json
+├── documents.jsonl
+├── chunks.jsonl                   # Fonte de dados do BM25 e do RAG
+├── failures.jsonl
+└── documents/                     # Markdown extraído por documento
+src/ingestion/                     # OCR, normalização, chunking e persistência
+src/retrievers/bm25.py             # Recuperação BM25 sobre chunks.jsonl
+src/pipelines/qa.py                # Recuperação + geração da resposta
+run_bm25.py                        # Teste local, sem API
+run_qa.py                          # RAG completo, com LLM
 ```
 
----
+## Instalação
 
-## 🛠️ Tecnologias e Dependências
-
-O projeto é desenvolvido em **Python 3** e utiliza as seguintes bibliotecas principais:
-
-*   **Processamento de Texto & Tokenização**:
-    *   `tiktoken`: Usado para contar tokens de forma precisa e alinhar com o vocabulário das LLMs.
-*   **Recuperação de Informação (Retriever)**:
-    *   `rank-bm25` (`BM25Okapi`): Algoritmo de busca léxica por relevância.
-*   **Provedores de LLM**:
-    *   `google-generativeai`: Acesso às APIs do Google Gemini.
-    *   `openai`: Acesso às APIs da OpenAI e integradores compatíveis (como OpenRouter).
-*   **Gestão de Ambiente**:
-    *   `python-dotenv`: Carregamento automático de chaves de API a partir de arquivos `.env`.
-
----
-
-## ⚙️ Configuração e Instalação
-
-### 1. Clonar e Acessar o Diretório
-```bash
-git clone <url-do-repositorio>
-cd Oraculo
-```
-
-### 2. Configurar o Ambiente Virtual (Recomendado)
 ```bash
 python3 -m venv venv
 source venv/bin/activate
+python -m pip install -r requirements.txt
+cp configs/ingestion.example.yml configs/ingestion.yml
+mkdir -p pdfs
 ```
 
-### 3. Instalar Dependências
+## Ingestão dos PDFs
+
+Coloque os arquivos em `pdfs/`. Subpastas também são processadas quando
+`source.recursive` está habilitado.
+
 ```bash
-pip install -r requirements.txt
+python -m src.cli.ingest --config configs/ingestion.yml
 ```
 
-### 4. Configurar as Chaves de API
-Crie um arquivo `.env` na raiz do projeto contendo as chaves que você deseja utilizar. Você pode se basear no arquivo `.env.exemplo`:
+Para reprocessar inclusive os PDFs que não mudaram:
+
 ```bash
-cp .env.exemplo .env
-```
-Abra o `.env` e preencha as variáveis de ambiente necessárias:
-```env
-GEMINI_API_KEY="sua-chave-gemini"
-OPENAI_API_KEY="sua-chave-openai"
-OPENROUTER_API_KEY="sua-chave-openrouter"
+python -m src.cli.ingest --config configs/ingestion.yml --force
 ```
 
----
+## Teste do BM25
 
-## 🚀 Como Executar
+O teste lê diretamente `data/bases/documentos/chunks.jsonl` e não chama APIs:
 
-O fluxo de funcionamento do projeto possui duas etapas obrigatórias: **Ingestão** e **Consulta**.
-
-### Etapa 1: Ingestão de Dados
-O script `run_ingestion.py` pega um texto base estático (definido na variável `BASE_TEXT` dentro do arquivo) e realiza o split por parágrafos duplos (`\n\n`), calculando uma sobreposição (overlap) de 20% de tokens de forma a preservar o contexto entre os blocos. Os resultados são salvos em `data/chunks_cache.json`.
-
-Execute o script de ingestão:
 ```bash
-python run_ingestion.py
+python run_bm25.py "Como executar o aplicativo?"
 ```
 
-### Etapa 2: Executar Consultas (Q&A)
-O script `run_qa.py` é interativo. Ele carrega os chunks persistidos no passo anterior, inicializa o retriever e solicita a pergunta do usuário.
+Para ver o texto integral dos resultados ou usar outra base:
 
-1. Abra o arquivo `run_qa.py` e escolha qual provedor e modelo deseja usar (descomentando as linhas apropriadas em `main()`):
-   ```python
-   # Exemplo: Utilizando OpenRouter
-   provider = OpenRouterProvider()
-   model_name = "openai/gpt-4.1-mini"
-   ```
-2. Execute o script:
-   ```bash
-   python run_qa.py
-   ```
-3. Digite sua pergunta quando solicitado no terminal (exemplo: *"Qual o prazo de validade do concurso?"*).
-4. O Oráculo irá buscar os parágrafos mais relevantes no cache local usando BM25, formatará o prompt e gerará a resposta final fundamentada nos dados recuperados.
+```bash
+python run_bm25.py "Como executar o aplicativo?" --top-k 5 --full
+python run_bm25.py "Minha pergunta" --chunks data/bases/outra-base/chunks.jsonl
+```
+
+## RAG completo
+
+Configure no `.env` a chave do provedor desejado e execute:
+
+```bash
+python run_qa.py "Como executar o aplicativo?"
+```
+
+O padrão usa OpenRouter. Outros exemplos:
+
+```bash
+python run_qa.py "Minha pergunta" --provider openai --model gpt-4.1-mini
+python run_qa.py "Minha pergunta" --provider gemini --model gemini-2.0-flash
+```
+
+Variáveis aceitas: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+`LLM_PROVIDER` e `LLM_MODEL`.
+
+## Testes automatizados
+
+```bash
+python -m pytest -q
+```
