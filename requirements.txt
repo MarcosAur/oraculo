@@ -25,7 +25,7 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
-bcrypt>=4.0.0
+bcrypt>=4.0.0,<4.1  # >=4.1 breaks passlib 1.7.4's bcrypt backend detection
 python-multipart>=0.0.9
 pydantic-settings>=2.0.0
 email-validator>=2.0.0
