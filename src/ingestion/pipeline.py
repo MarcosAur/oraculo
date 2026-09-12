@@ -217,6 +217,28 @@ class IngestionPipeline:
         for document_id in stale_document_ids:
             self.store.remove_document_artifacts(document_id)
 
+        # Sincroniza estado com o Banco de Dados SQLite
+        try:
+            from src.api.database import SessionLocal
+            from src.api.services.document_service import sync_documents_after_ingestion
+            db = SessionLocal()
+            try:
+                sync_documents_after_ingestion(
+                    db=db,
+                    discovered_sources=discovered,
+                    pipeline_documents=all_documents,
+                    pipeline_chunks=all_chunks
+                )
+                db.commit()
+            except Exception as exc:
+                self.progress(f"Failed to sync with SQLite: {exc}")
+                db.rollback()
+            finally:
+                db.close()
+        except ImportError:
+            self.progress("SQLite sync skipped (API module not found).")
+
+
         return IngestionSummary(
             base_name=self.config.output.base_name,
             discovered=len(discovered),

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from src.api.schemas.qa import QuestionRequest, QuestionResponse
-from src.api.dependencies import get_current_user
+from src.api.dependencies import get_current_user, get_db
 from src.api.models.user import User
 from src.api.services.qa_service import ask_question
 from src.api.config import settings
@@ -10,7 +11,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/ask", response_model=QuestionResponse)
-def ask(request: QuestionRequest, current_user: User = Depends(get_current_user)):
+def ask(request: QuestionRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         # Usa provider/model do request ou cai nos padrões
         provider = request.provider or settings.LLM_PROVIDER
@@ -20,7 +21,8 @@ def ask(request: QuestionRequest, current_user: User = Depends(get_current_user)
             question=request.question,
             provider=provider,
             model=model,
-            top_k=request.top_k
+            top_k=request.top_k,
+            db=db
         )
         
         # A resposta pode conter caminhos None, garantimos um default

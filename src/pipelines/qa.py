@@ -13,10 +13,14 @@ class QAPipeline:
         self,
         llm_provider: LLMProvider,
         chunks_path: str | Path = DEFAULT_CHUNKS_PATH,
+        db_session = None,
     ):
         self.chunks_path = Path(chunks_path)
         self.llm_provider = llm_provider
-        self.retriever = BM25Retriever.from_jsonl(self.chunks_path)
+        if db_session is not None:
+            self.retriever = BM25Retriever.from_jsonl_filtered(self.chunks_path, db_session)
+        else:
+            self.retriever = BM25Retriever.from_jsonl(self.chunks_path)
         self.chunks = self.retriever.chunks
 
     def answer(self, question: str, llm_model: str, top_k: int = 3) -> dict:

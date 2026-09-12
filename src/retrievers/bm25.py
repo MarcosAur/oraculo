@@ -55,6 +55,46 @@ class BM25Retriever(BaseRetriever):
                 chunks.append(chunk)
         return cls(chunks)
 
+    @classmethod
+    def from_jsonl_filtered(cls, chunks_path: str | Path, db_session) -> "BM25Retriever":
+        """Loads chunks from JSONL but excludes those from soft-deleted documents."""
+        path = Path(chunks_path)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Knowledge base chunks not found at {path}. "
+                "Run the PDF ingestion pipeline first."
+            )
+
+        from src.api.models.document import Document
+        # Load active document_ids from DB
+        active_doc_ids = {
+            row[0]
+            for row in db_session.query(Document.document_id).filter(Document.deleted_at.is_(None)).all()
+        }
+
+        chunks: list[dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"Invalid JSONL in {path} at line {line_number}: {exc}"
+                    ) from exc
+                if not isinstance(chunk, dict) or not isinstance(chunk.get("text"), str):
+                    raise ValueError(
+                        f"Invalid chunk in {path} at line {line_number}: "
+                        "a text field is required."
+                    )
+                
+                # Filter out soft-deleted chunks
+                if chunk.get("document_id") in active_doc_ids:
+                    chunks.append(chunk)
+                    
+        return cls(chunks)
+
     def retrieve(
         self, query: str, top_k: int = 3, **kwargs: Any
     ) -> list[dict[str, Any]]:

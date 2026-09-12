@@ -49,12 +49,21 @@ def main() -> int:
     provider_class, default_model = PROVIDERS[args.provider]
     model = args.model or default_model
     try:
+        from src.api.database import SessionLocal
+        db = SessionLocal()
+    except Exception:
+        db = None
+
+    try:
         pipeline = QAPipeline(
-            llm_provider=provider_class(), chunks_path=args.chunks
+            llm_provider=provider_class(), chunks_path=args.chunks, db_session=db
         )
         result = pipeline.answer(question, llm_model=model, top_k=args.top_k)
     except (FileNotFoundError, RuntimeError, TypeError, ValueError) as exc:
         raise SystemExit(f"Erro: {exc}") from exc
+    finally:
+        if db is not None:
+            db.close()
 
     answer = result["answer"]
     print(f"\nResposta:\n{answer}")

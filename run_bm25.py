@@ -34,9 +34,12 @@ def main() -> int:
         raise SystemExit("Erro: informe uma pergunta.")
 
     try:
+        from src.api.database import SessionLocal
+        db = SessionLocal()
+        retriever = BM25Retriever.from_jsonl_filtered(args.chunks, db)
+        db.close()
+    except Exception:
         retriever = BM25Retriever.from_jsonl(args.chunks)
-    except (FileNotFoundError, ValueError) as exc:
-        raise SystemExit(f"Erro: {exc}") from exc
 
     results = retriever.retrieve(question, top_k=args.top_k)
     if not results:
