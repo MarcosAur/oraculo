@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "openrouter"
     LLM_MODEL: str | None = None
     TOP_K: int = 3
+    RETRIEVER_MODE: str = "hybrid"
+    EMBEDDING_MODEL: str = "intfloat/multilingual-e5-small"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

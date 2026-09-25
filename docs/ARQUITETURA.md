@@ -123,10 +123,9 @@ parcial após uma interrupção.
 ## Limitações arquiteturais atuais
 
 - O índice BM25 é reconstruído em memória a cada execução.
-- A busca é lexical e não resolve, por si só, sinônimos sem termos em comum.
+- A busca BM25 é lexical; perguntas sem termos em comum dependem dos modos
+  `vector` ou `hybrid` (ver [BUSCA_VETORIAL.md](BUSCA_VETORIAL.md)).
 - Não há API HTTP ou interface web.
 - Não há autenticação na aplicação de linha de comando.
 - MinIO está disponível no Docker Compose, mas não é fonte da ingestão.
-- Dependências de vetores existem no projeto, mas ChromaDB e embeddings não são
-  usados pelo fluxo atual.
 - Remover um PDF de `pdfs/` não remove o documento correspondente da base.

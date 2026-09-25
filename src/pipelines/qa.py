@@ -3,25 +3,32 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.llm import LLMProvider
-from src.retrievers.bm25 import BM25Retriever, DEFAULT_CHUNKS_PATH
+from src.retrievers.base import BaseRetriever
+from src.retrievers.bm25 import DEFAULT_CHUNKS_PATH
+from src.retrievers.embeddings import DEFAULT_EMBEDDING_MODEL
+from src.retrievers.factory import build_retriever
 
 
 class QAPipeline:
-    """Retrieves ingested PDF chunks with BM25 and answers with an LLM."""
+    """Retrieves ingested PDF chunks (BM25, vector or hybrid) and answers with an LLM."""
 
     def __init__(
         self,
         llm_provider: LLMProvider,
         chunks_path: str | Path = DEFAULT_CHUNKS_PATH,
         db_session = None,
+        retriever_mode: str = "bm25",
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+        retriever: BaseRetriever | None = None,
     ):
         self.chunks_path = Path(chunks_path)
         self.llm_provider = llm_provider
-        if db_session is not None:
-            self.retriever = BM25Retriever.from_jsonl_filtered(self.chunks_path, db_session)
-        else:
-            self.retriever = BM25Retriever.from_jsonl(self.chunks_path)
-        self.chunks = self.retriever.chunks
+        self.retriever = retriever or build_retriever(
+            retriever_mode,
+            self.chunks_path,
+            db_session=db_session,
+            embedding_model=embedding_model,
+        )
 
     def answer(self, question: str, llm_model: str, top_k: int = 3) -> dict:
         relevant_chunks = self.retriever.retrieve(question, top_k=top_k)

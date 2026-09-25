@@ -37,6 +37,14 @@ class ChunkingConfig:
 
 
 @dataclass(frozen=True)
+class VectorStoreConfig:
+    enabled: bool = True
+    embedding_model: str = "intfloat/multilingual-e5-small"
+    device: str | None = None
+    batch_size: int = 32
+
+
+@dataclass(frozen=True)
 class RuntimeConfig:
     force: bool = False
     continue_on_error: bool = True
@@ -48,6 +56,7 @@ class IngestionConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
     paddle_ocr: PaddleOcrConfig = field(default_factory=PaddleOcrConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
+    vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
 
     @classmethod
@@ -74,6 +83,7 @@ class IngestionConfig:
         output_data = payload.get("output", {})
         paddle_ocr_data = payload.get("paddle_ocr", {})
         chunking_data = payload.get("chunking", {})
+        vector_store_data = payload.get("vector_store", {})
         runtime_data = payload.get("runtime", {})
 
         input_dir = source_data.get("input_dir")
@@ -116,6 +126,16 @@ class IngestionConfig:
                 minimum_chunk_size=int(
                     chunking_data.get("minimum_chunk_size", 80)
                 ),
+            ),
+            vector_store=VectorStoreConfig(
+                enabled=bool(vector_store_data.get("enabled", True)),
+                embedding_model=str(
+                    vector_store_data.get(
+                        "embedding_model", "intfloat/multilingual-e5-small"
+                    )
+                ),
+                device=vector_store_data.get("device"),
+                batch_size=int(vector_store_data.get("batch_size", 32)),
             ),
             runtime=RuntimeConfig(
                 force=bool(runtime_data.get("force", False)),
@@ -169,6 +189,10 @@ class IngestionConfig:
             raise ValueError("chunk_overlap must be smaller than chunk_size.")
         if not 0 <= self.chunking.minimum_chunk_size <= self.chunking.chunk_size:
             raise ValueError("minimum_chunk_size must be between zero and chunk_size.")
+        if not self.vector_store.embedding_model.strip():
+            raise ValueError("vector_store.embedding_model cannot be empty.")
+        if self.vector_store.batch_size <= 0:
+            raise ValueError("vector_store.batch_size must be greater than zero.")
 
     def to_manifest_dict(self) -> dict[str, Any]:
         data = asdict(self)

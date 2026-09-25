@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 
 from src.llm import GeminiProvider, OpenAIProvider, OpenRouterProvider
 from src.pipelines import QAPipeline
-from src.retrievers import DEFAULT_CHUNKS_PATH
+from src.retrievers import DEFAULT_CHUNKS_PATH, DEFAULT_EMBEDDING_MODEL
+from src.retrievers.factory import RETRIEVER_MODES
 
 
 PROVIDERS = {
@@ -20,7 +21,7 @@ PROVIDERS = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Consulta os PDFs ingeridos usando BM25 e uma LLM."
+        description="Consulta os PDFs ingeridos usando BM25/vetores e uma LLM."
     )
     parser.add_argument("question", nargs="?", help="Pergunta para o RAG.")
     parser.add_argument(
@@ -33,6 +34,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--model", default=os.getenv("LLM_MODEL"))
     parser.add_argument("--top-k", type=int, default=3)
+    parser.add_argument(
+        "--retriever",
+        choices=RETRIEVER_MODES,
+        default=os.getenv("RETRIEVER_MODE", "hybrid"),
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default=os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
+    )
     return parser
 
 
@@ -56,7 +66,11 @@ def main() -> int:
 
     try:
         pipeline = QAPipeline(
-            llm_provider=provider_class(), chunks_path=args.chunks, db_session=db
+            llm_provider=provider_class(),
+            chunks_path=args.chunks,
+            db_session=db,
+            retriever_mode=args.retriever,
+            embedding_model=args.embedding_model,
         )
         result = pipeline.answer(question, llm_model=model, top_k=args.top_k)
     except (FileNotFoundError, RuntimeError, TypeError, ValueError) as exc:
@@ -68,7 +82,7 @@ def main() -> int:
     answer = result["answer"]
     print(f"\nResposta:\n{answer}")
     if result["sources"]:
-        print("\nFontes recuperadas pelo BM25:")
+        print(f"\nFontes recuperadas ({args.retriever}):")
         for chunk in result["sources"]:
             source_path = chunk.get("source_path", "desconhecida")
             score = chunk["score"]

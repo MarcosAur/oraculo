@@ -93,6 +93,7 @@ class IngestionSummary:
     active_chunks: int
     duration_seconds: float
     output_dir: str
+    vector_index: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
