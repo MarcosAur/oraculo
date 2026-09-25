@@ -33,6 +33,18 @@ python run_bm25.py "Como executar o aplicativo?"
 
 Esse comando lê `data/bases/documentos/chunks.jsonl` e não usa uma LLM.
 
+## Banco vetorial (ChromaDB)
+
+```bash
+python -m src.cli.index_vectors             # vetoriza chunks novos/alterados
+python -m src.cli.index_vectors --rebuild   # apaga e refaz o índice
+python run_search.py "Como rodar o projeto?"                     # busca híbrida
+python run_search.py "Como rodar o projeto?" --retriever vector  # só vetorial
+```
+
+Detalhes e exemplos de uso direto do ChromaDB em
+[BUSCA_VETORIAL.md](BUSCA_VETORIAL.md#como-usar-o-chromadb).
+
 ## Executar o RAG completo
 
 ```bash

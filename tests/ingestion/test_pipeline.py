@@ -40,6 +40,7 @@ def make_config(input_dir: Path, output_dir: Path) -> IngestionConfig:
                 "chunk_overlap": 10,
                 "minimum_chunk_size": 0,
             },
+            "vector_store": {"enabled": False},
         }
     )
 
@@ -114,3 +115,27 @@ def test_failed_update_keeps_previous_valid_version(tmp_path: Path):
     assert summary.active_documents == 1
     assert len(documents) == 1
     assert failures[0]["message"] == "broken document"
+
+
+def test_pipeline_keeps_vector_index_in_sync(tmp_path: Path):
+    from src.retrievers.vector import ChromaVectorStore
+    from tests.retrievers.test_vector import FakeEmbedder
+
+    input_dir = tmp_path / "pdfs"
+    output_dir = tmp_path / "output"
+    input_dir.mkdir()
+    pdf = input_dir / "manual.pdf"
+    pdf.write_bytes(b"version-one")
+    config = make_config(input_dir, output_dir)
+    base_dir = output_dir / "knowledge"
+    vector_store = ChromaVectorStore(base_dir / "chroma", FakeEmbedder())
+
+    first = IngestionPipeline(
+        config, extractor=FakeExtractor(), vector_store=vector_store
+    ).run()
+    assert first.vector_index["added"] == first.active_chunks
+
+    pdf.write_bytes(b"version-two")
+    IngestionPipeline(config, extractor=FakeExtractor(), vector_store=vector_store).run()
+    chunk_ids = {chunk["chunk_id"] for chunk in read_jsonl(base_dir / "chunks.jsonl")}
+    assert vector_store.indexed_ids() == chunk_ids

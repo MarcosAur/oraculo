@@ -4,7 +4,7 @@ import hashlib
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from .chunkers import MarkdownChunker
 from .config import IngestionConfig
@@ -36,6 +36,7 @@ class IngestionPipeline:
         extractor: DocumentExtractor | None = None,
         source: DirectoryPdfSource | None = None,
         store: BaseStore | None = None,
+        vector_store: Any | None = None,
         progress: Callable[[str], None] | None = None,
     ):
         self.config = config
@@ -46,6 +47,7 @@ class IngestionPipeline:
         self.normalizer = MarkdownNormalizer()
         self.chunker = MarkdownChunker(config.chunking)
         self.store = store or BaseStore(config.base_dir)
+        self.vector_store = vector_store
         self.progress = progress or (lambda _message: None)
 
     def _checksum(self, path: Path) -> str:
@@ -62,6 +64,35 @@ class IngestionPipeline:
     def _chunk_id(self, document_id: str, index: int, text: str) -> str:
         identity = f"{document_id}\0{index}\0{text}".encode("utf-8")
         return hashlib.sha256(identity).hexdigest()[:32]
+
+    def _sync_vector_store(self, chunks: list[dict]) -> dict | None:
+        """Mirrors chunks.jsonl into ChromaDB. Failures keep the JSONL snapshot."""
+        if self.vector_store is None and not self.config.vector_store.enabled:
+            return None
+        try:
+            if self.vector_store is None:
+                from src.retrievers.embeddings import SentenceTransformerEmbedder
+                from src.retrievers.vector import ChromaVectorStore
+
+                settings = self.config.vector_store
+                self.vector_store = ChromaVectorStore.for_base(
+                    self.config.base_dir,
+                    SentenceTransformerEmbedder(
+                        settings.embedding_model,
+                        device=settings.device,
+                        batch_size=settings.batch_size,
+                    ),
+                )
+            self.progress("Updating vector index...")
+            summary = self.vector_store.sync(chunks, progress=self.progress).to_dict()
+            self.progress(f"Vector index: {summary}")
+            return summary
+        except Exception as exc:
+            self.progress(
+                f"Failed to update vector index: {exc}. "
+                "Retry with: python -m src.cli.index_vectors"
+            )
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
     def run(self) -> IngestionSummary:
         started = time.monotonic()
@@ -217,6 +248,8 @@ class IngestionPipeline:
         for document_id in stale_document_ids:
             self.store.remove_document_artifacts(document_id)
 
+        vector_index = self._sync_vector_store(all_chunks)
+
         # Sincroniza estado com o Banco de Dados SQLite
         try:
             from src.api.database import SessionLocal
@@ -249,4 +282,5 @@ class IngestionPipeline:
             active_chunks=len(all_chunks),
             duration_seconds=round(duration, 3),
             output_dir=str(self.config.base_dir),
+            vector_index=vector_index,
         )

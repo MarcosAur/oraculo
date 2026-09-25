@@ -280,10 +280,11 @@ modelo e as instruções do prompt.
 
 ## Dependências presentes, mas fora do fluxo
 
-`chromadb`, `sentence-transformers` e `langchain-text-splitters` estão listados em
-`requirements.txt`, porém não são importados pelo pipeline atual. O MinIO também
-não está conectado. Não conte com armazenamento vetorial ou ingestão S3 sem uma
-implementação adicional.
+`langchain-text-splitters` está listado em `requirements.txt`, porém não é
+importado pelo pipeline atual. O MinIO também não está conectado. Não conte com
+ingestão S3 sem uma implementação adicional. (`chromadb` e
+`sentence-transformers` são usados pelo banco vetorial; ver
+[BUSCA_VETORIAL.md](BUSCA_VETORIAL.md).)
 
 O SDK `google-generativeai` utilizado pelo provedor Gemini emite aviso de
 descontinuação. O aviso não interfere no BM25, mas a migração para o SDK atual do
