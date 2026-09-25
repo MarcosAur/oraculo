@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .chunkers import MarkdownChunker
+from .classifier import PdfClassifier, PdfType
 from .config import IngestionConfig
-from .extractors import DocumentExtractor, PaddleOcrPdfExtractor
+from .extractors import DocumentExtractor, NativePdfExtractor, PaddleOcrPdfExtractor
 from .models import (
     ChunkRecord,
     DocumentRecord,
@@ -34,6 +35,8 @@ class IngestionPipeline:
         config: IngestionConfig,
         *,
         extractor: DocumentExtractor | None = None,
+        native_extractor: DocumentExtractor | None = None,
+        classifier: PdfClassifier | None = None,
         source: DirectoryPdfSource | None = None,
         store: BaseStore | None = None,
         vector_store: Any | None = None,
@@ -43,7 +46,13 @@ class IngestionPipeline:
         self.source = source or DirectoryPdfSource(
             config.source.input_dir, config.source.recursive
         )
-        self.extractor = extractor or PaddleOcrPdfExtractor(config.paddle_ocr)
+        self.ocr_extractor = extractor or PaddleOcrPdfExtractor(config.paddle_ocr)
+        self.native_extractor = native_extractor or NativePdfExtractor()
+        self.classifier = classifier or PdfClassifier(
+            min_chars_per_page=config.classification.min_chars_per_page,
+            native_threshold=config.classification.native_threshold,
+            scanned_threshold=config.classification.scanned_threshold,
+        )
         self.normalizer = MarkdownNormalizer()
         self.chunker = MarkdownChunker(config.chunking)
         self.store = store or BaseStore(config.base_dir)
@@ -140,9 +149,25 @@ class IngestionPipeline:
                 self.progress(
                     f"[{position}/{len(discovered)}] Processing: {source.relative_path}"
                 )
+
+                # Classify the PDF to choose the right extractor.
+                classification = self.classifier.classify(path)
+                if classification.pdf_type == PdfType.NATIVE:
+                    extractor = self.native_extractor
+                    label = "native"
+                else:
+                    extractor = self.ocr_extractor
+                    label = classification.pdf_type.value
+
+                self.progress(
+                    f"  → Classified as {label} "
+                    f"({classification.native_pages}/{classification.total_pages} "
+                    f"text pages)"
+                )
+
                 document_id = self._document_id(source, checksum)
                 staging_dir = self.store.create_staging_dir()
-                extraction = self.extractor.extract(source, staging_dir)
+                extraction = extractor.extract(source, staging_dir)
                 raw_path = staging_dir / "document.raw.md"
                 markdown_path = staging_dir / "document.md"
                 if not raw_path.is_file() or raw_path.stat().st_size == 0:
@@ -170,7 +195,10 @@ class IngestionPipeline:
                     markdown_path=(document_dir / "document.md").as_posix(),
                     raw_markdown_path=(document_dir / "document.raw.md").as_posix(),
                     assets_dir=(document_dir / "assets").as_posix(),
-                    metadata={"warnings": extraction.warnings},
+                    metadata={
+                        "warnings": extraction.warnings,
+                        "pdf_type": classification.pdf_type.value,
+                    },
                 )
                 chunks = [
                     ChunkRecord(

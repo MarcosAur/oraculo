@@ -29,3 +29,8 @@ vector_store:
 runtime:
   force: false
   continue_on_error: true
+
+classification:
+  min_chars_per_page: 50     # chars mínimos para considerar a página como nativa
+  native_threshold: 0.80     # >= 80% páginas com texto → extração nativa (sem OCR)
+  scanned_threshold: 0.20    # <= 20% páginas com texto → OCR via PaddleOCR

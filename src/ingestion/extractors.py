@@ -131,3 +131,68 @@ class PaddleOcrPdfExtractor:
             languages=[self.config.language],
             warnings=warnings,
         )
+
+
+class NativePdfExtractor:
+    """Extract text from native (text-based) PDFs using PyMuPDF.
+
+    Much faster than OCR since it reads the embedded text layer directly.
+    Produces the same ``document.raw.md`` output format as
+    :class:`PaddleOcrPdfExtractor` so both are interchangeable in the
+    pipeline.
+    """
+
+    def extract(
+        self, source: SourceDocument, output_dir: Path
+    ) -> ExtractionResult:
+        try:
+            import pymupdf
+        except ImportError:
+            try:
+                import fitz as pymupdf  # type: ignore[no-redef]
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PyMuPDF is required for native PDF extraction. "
+                    "Run: pip install PyMuPDF"
+                ) from exc
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "assets").mkdir(exist_ok=True)
+
+        doc = pymupdf.open(source.path)
+        pages: list[str] = []
+        warnings: list[str] = []
+
+        try:
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                text = page.get_text("text").strip()
+                if text:
+                    pages.append(text)
+                else:
+                    pages.append("")
+                    warnings.append(
+                        f"Page {page_num + 1} yielded no extractable text."
+                    )
+        finally:
+            doc.close()
+
+        if not pages:
+            raise ValueError("PyMuPDF did not find any pages in the PDF.")
+
+        raw_markdown = f"\n\n{PAGE_BREAK_MARKER}\n\n".join(pages).strip()
+        if not raw_markdown:
+            raise ValueError(
+                "PyMuPDF did not extract any text from the PDF."
+            )
+        (output_dir / "document.raw.md").write_text(
+            raw_markdown + "\n", encoding="utf-8"
+        )
+
+        return ExtractionResult(
+            page_count=len(pages),
+            extraction_method="native_pymupdf",
+            status="success",
+            languages=[],
+            warnings=warnings,
+        )

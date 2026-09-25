@@ -51,6 +51,15 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True)
+class ClassificationConfig:
+    """Controls automatic native vs scanned PDF detection."""
+
+    min_chars_per_page: int = 50
+    native_threshold: float = 0.80
+    scanned_threshold: float = 0.20
+
+
+@dataclass(frozen=True)
 class IngestionConfig:
     source: SourceConfig
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -58,6 +67,7 @@ class IngestionConfig:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    classification: ClassificationConfig = field(default_factory=ClassificationConfig)
 
     @classmethod
     def from_yaml(cls, config_path: str | Path) -> "IngestionConfig":
@@ -85,6 +95,7 @@ class IngestionConfig:
         chunking_data = payload.get("chunking", {})
         vector_store_data = payload.get("vector_store", {})
         runtime_data = payload.get("runtime", {})
+        classification_data = payload.get("classification", {})
 
         input_dir = source_data.get("input_dir")
         if not input_dir:
@@ -141,6 +152,17 @@ class IngestionConfig:
                 force=bool(runtime_data.get("force", False)),
                 continue_on_error=bool(
                     runtime_data.get("continue_on_error", True)
+                ),
+            ),
+            classification=ClassificationConfig(
+                min_chars_per_page=int(
+                    classification_data.get("min_chars_per_page", 50)
+                ),
+                native_threshold=float(
+                    classification_data.get("native_threshold", 0.80)
+                ),
+                scanned_threshold=float(
+                    classification_data.get("scanned_threshold", 0.20)
                 ),
             ),
         )
