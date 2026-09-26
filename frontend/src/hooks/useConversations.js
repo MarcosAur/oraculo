@@ -67,7 +67,7 @@ export function useConversations(token, onUnauthorized) {
     })
   }, [])
 
-  const sendQuestion = useCallback(async (question) => {
+  const sendQuestion = useCallback(async (question, options = {}) => {
     const trimmed = question.trim()
     if (!trimmed || isSending) return
 
@@ -89,13 +89,18 @@ export function useConversations(token, onUnauthorized) {
 
     setIsSending(true)
     try {
-      const { answer, sources } = await askQuestion(token, trimmed)
+      const { answer, sources, retriever_mode: retrieverMode } = await askQuestion(
+        token,
+        trimmed,
+        options,
+      )
       const assistantMessage = {
         id: createId(),
         role: 'assistant',
         content: answer,
         timestamp: Date.now(),
         sources,
+        retrieverMode,
       }
 
       setState((prev) => ({

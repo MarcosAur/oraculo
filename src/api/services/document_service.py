@@ -1,67 +1,90 @@
-from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-from src.api.models.document import Document, Chunk
 
-def sync_documents_after_ingestion(db: Session, discovered_sources: list, pipeline_documents: list, pipeline_chunks: list):
+from sqlalchemy.orm import Session
+
+from src.api.models.document import Chunk, Document
+
+
+def _update_document(document: Document, data: dict, deleted_at=None) -> None:
+    for field in (
+        "file_name",
+        "relative_path",
+        "source_path",
+        "checksum",
+        "size_bytes",
+        "page_count",
+        "status",
+    ):
+        setattr(document, field, data[field])
+    document.deleted_at = deleted_at
+
+
+def _update_chunk(chunk: Chunk, data: dict, deleted_at=None) -> None:
+    for field in (
+        "document_id",
+        "chunk_index",
+        "text",
+        "token_count",
+        "page_start",
+        "page_end",
+        "source_path",
+    ):
+        setattr(chunk, field, data[field])
+    chunk.deleted_at = deleted_at
+
+
+def sync_documents_after_ingestion(
+    db: Session,
+    discovered_sources: list,
+    pipeline_documents: list,
+    pipeline_chunks: list,
+) -> None:
+    """Mirror the active JSONL snapshot into SQLite.
+
+    The snapshot is the source of truth. Records are reactivated when a file
+    returns with an ID already kept by the soft-delete history; inserting a new
+    row in that case would violate the unique constraints on document/chunk IDs.
+    """
+    del discovered_sources  # Kept in the signature for compatibility with callers.
+
     now = datetime.now(timezone.utc)
-    
-    # Map discovered sources by relative_path
-    discovered_paths = {src.relative_path for src in discovered_sources}
-    
-    # Soft delete documents not in discovered sources anymore
-    active_docs = db.query(Document).filter(Document.deleted_at.is_(None)).all()
-    for doc in active_docs:
-        if doc.relative_path not in discovered_paths:
-            doc.deleted_at = now
-            for chunk in doc.chunks:
-                chunk.deleted_at = now
-    
-    # Map pipeline outputs
-    pipeline_doc_map = {d["relative_path"]: d for d in pipeline_documents}
-    pipeline_chunk_map = {}
-    for c in pipeline_chunks:
-        pipeline_chunk_map.setdefault(c["document_id"], []).append(c)
+    desired_document_ids = {item["document_id"] for item in pipeline_documents}
+    desired_chunks_by_document: dict[str, list[dict]] = {}
+    for item in pipeline_chunks:
+        desired_chunks_by_document.setdefault(item["document_id"], []).append(item)
 
-    # Process all discovered and successfully ingested documents
-    for rel_path, p_doc in pipeline_doc_map.items():
-        existing = db.query(Document).filter(
-            Document.relative_path == rel_path, 
-            Document.deleted_at.is_(None)
-        ).first()
-        
-        if existing:
-            if existing.checksum != p_doc["checksum"]:
-                # Document changed: soft delete the old one, insert the new one
-                existing.deleted_at = now
-                for chunk in existing.chunks:
-                    chunk.deleted_at = now
-            else:
-                # Document unchanged, ignore
-                continue
-                
-        # Insert new doc
-        new_doc = Document(
-            document_id=p_doc["document_id"],
-            file_name=p_doc["file_name"],
-            relative_path=p_doc["relative_path"],
-            source_path=p_doc["source_path"],
-            checksum=p_doc["checksum"],
-            size_bytes=p_doc["size_bytes"],
-            page_count=p_doc["page_count"],
-            status=p_doc["status"]
-        )
-        db.add(new_doc)
-        
-        # Insert chunks for the new doc
-        for p_chunk in pipeline_chunk_map.get(p_doc["document_id"], []):
-            new_chunk = Chunk(
-                chunk_id=p_chunk["chunk_id"],
-                document_id=p_chunk["document_id"],
-                chunk_index=p_chunk["chunk_index"],
-                text=p_chunk["text"],
-                token_count=p_chunk["token_count"],
-                page_start=p_chunk["page_start"],
-                page_end=p_chunk["page_end"],
-                source_path=p_chunk["source_path"]
-            )
-            db.add(new_chunk)
+    for document in db.query(Document).filter(Document.deleted_at.is_(None)).all():
+        if document.document_id not in desired_document_ids:
+            document.deleted_at = now
+            for chunk in document.chunks:
+                chunk.deleted_at = now
+
+    for document_data in pipeline_documents:
+        document_id = document_data["document_id"]
+        document = db.query(Document).filter(Document.document_id == document_id).one_or_none()
+        if document is None:
+            document = Document(document_id=document_id)
+            db.add(document)
+        _update_document(document, document_data)
+
+        desired_chunks = {
+            item["chunk_id"]: item
+            for item in desired_chunks_by_document.get(document_id, [])
+        }
+        existing_chunks = {
+            chunk.chunk_id: chunk
+            for chunk in db.query(Chunk).filter(Chunk.document_id == document_id).all()
+        }
+
+        for chunk_id, chunk in existing_chunks.items():
+            if chunk_id not in desired_chunks:
+                chunk.deleted_at = now
+
+        for chunk_id, chunk_data in desired_chunks.items():
+            chunk = existing_chunks.get(chunk_id)
+            if chunk is None:
+                chunk = db.query(Chunk).filter(Chunk.chunk_id == chunk_id).one_or_none()
+            if chunk is None:
+                chunk = Chunk(chunk_id=chunk_id)
+                db.add(chunk)
+            _update_chunk(chunk, chunk_data)

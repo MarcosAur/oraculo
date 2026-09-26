@@ -108,15 +108,17 @@ Acesse a documentação interativa da API (Swagger UI) em:
     "question": "O que é o Oráculo?",
     "provider": "openrouter",
     "model": "openai/gpt-4.1-mini",
-    "top_k": 3
+    "top_k": 3,
+    "retriever_mode": "hybrid"
   }
   ```
-  *(Nota: `provider`, `model` e `top_k` são opcionais. Se omitidos, os valores padrão do arquivo `.env` serão usados).*
+  *(Nota: `provider`, `model`, `top_k` e `retriever_mode` são opcionais. O modo pode ser `bm25`, `vector` ou `hybrid`; se omitido, será usado `RETRIEVER_MODE` do arquivo `.env`.)*
 - **Resposta de Sucesso (200):**
   ```json
   {
     "question": "O que é o Oráculo?",
     "answer": "O Oráculo é um sistema RAG...",
+    "retriever_mode": "hybrid",
     "sources": [
       {
         "source_path": "caminho/do/documento.pdf",

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
 import MessageInput from './MessageInput'
@@ -6,6 +6,7 @@ import './ChatWindow.css'
 
 export default function ChatWindow({ conversation, isSending, onSend }) {
   const endRef = useRef(null)
+  const [retrieverMode, setRetrieverMode] = useState('hybrid')
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -34,6 +35,19 @@ export default function ChatWindow({ conversation, isSending, onSend }) {
 
       <header className="chat-window__header">
         <h1 className="chat-window__title">{conversation.title}</h1>
+        <label className="chat-window__retriever">
+          <span>Busca</span>
+          <select
+            value={retrieverMode}
+            onChange={(event) => setRetrieverMode(event.target.value)}
+            disabled={isSending}
+            aria-label="Modo de busca nos documentos"
+          >
+            <option value="hybrid">Híbrida</option>
+            <option value="vector">Semântica (Chroma)</option>
+            <option value="bm25">Palavras-chave (BM25)</option>
+          </select>
+        </label>
       </header>
 
       <div className="chat-window__messages">
@@ -47,7 +61,10 @@ export default function ChatWindow({ conversation, isSending, onSend }) {
         <div ref={endRef} />
       </div>
 
-      <MessageInput onSend={onSend} disabled={isSending} />
+      <MessageInput
+        onSend={(question) => onSend(question, { retrieverMode })}
+        disabled={isSending}
+      />
     </div>
   )
 }

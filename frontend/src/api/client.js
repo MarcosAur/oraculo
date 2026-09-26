@@ -51,14 +51,18 @@ export async function register(email, password) {
   return response.json()
 }
 
-export async function askQuestion(token, question) {
+export async function askQuestion(token, question, options = {}) {
+  const body = { question }
+  if (options.retrieverMode) body.retriever_mode = options.retrieverMode
+  if (Number.isInteger(options.topK)) body.top_k = options.topK
+
   const response = await fetch(`${API_URL}/qa/ask`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {

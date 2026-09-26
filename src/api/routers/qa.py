@@ -22,6 +22,7 @@ def ask(request: QuestionRequest, current_user: User = Depends(get_current_user)
             provider=provider,
             model=model,
             top_k=request.top_k,
+            retriever_mode=request.retriever_mode,
             db=db
         )
         
@@ -39,6 +40,7 @@ def ask(request: QuestionRequest, current_user: User = Depends(get_current_user)
         return {
             "question": result["question"],
             "answer": result["answer"],
+            "retriever_mode": result["retriever_mode"],
             "sources": sources
         }
     except Exception as e:

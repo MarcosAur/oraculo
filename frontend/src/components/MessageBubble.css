@@ -36,11 +36,42 @@
   line-height: 1.45;
 }
 
+.message-bubble__source-block {
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-color);
+}
+
+.message-bubble__source-title {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .message-bubble__sources {
   margin: 0;
   padding: 0 0 0 16px;
   font-size: 11px;
   color: var(--text-muted);
+  list-style: none;
+}
+
+.message-bubble__source-item {
+  margin-bottom: 4px;
+}
+
+.source-path {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 6px;
+}
+
+.source-meta {
+  opacity: 0.8;
 }
 
 .message-bubble__time {
